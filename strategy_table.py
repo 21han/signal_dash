@@ -1,15 +1,25 @@
 from utils import db
+import base64
+import datetime
+import io
+import pandas as pd
 import dash
-import dash_table
-from dash.dependencies import Input, Output
-import dash_html_components as html
+from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
+import dash_html_components as html
+import dash_table
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
 
 PAGE_SIZE = 5
 USER_TYPE = "admin"
 
 df = db.get_signals(0)
-df['strategy_name'] = df['strategy_name'].apply(lambda s: f"[{s}](https://www.google.com)")
+df['signal_name'] = df['signal_name'].apply(lambda s: f"[{s}](https://dash-gallery.plotly.host/dash-time-series/)")
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
@@ -77,7 +87,7 @@ def update_table(page_current,page_size, filter):
 def signal_data_table():
     _columns = []
     for i in df.columns:
-        if i == 'strategy_name':
+        if i == 'signal_name':
             _columns.append({"name": i, "id": i, 'presentation': 'markdown'})
         else:
             _columns.append({"name": i, "id": i})
@@ -86,10 +96,7 @@ def signal_data_table():
         columns=_columns,
         page_current=0,
         style_cell={
-            'textAlign': 'right',
-            'fontSize': 15,
-            'overflow': 'hidden',
-            'textOverflow': 'ellipsis',
+            'textAlign': 'left',
         },
         page_size=PAGE_SIZE,
         page_action='custom',
@@ -100,6 +107,60 @@ def signal_data_table():
             'fontWeight': 'bold'
         },
     )
+
+
+def parse_contents(contents, filename, date):
+    content_type, content_string = contents.split(',')
+
+    decoded = base64.b64decode(content_string)
+    df = None
+    try:
+        if 'csv' in filename:
+            # Assume that the user uploaded a CSV file
+            df = pd.read_csv(
+                io.StringIO(decoded.decode('utf-8')))
+            logger.info(f"data shape: {df.shape}\n"
+                        f"data columns: {df.columns}")
+            # TODO: send this file to S3
+        elif 'xls' in filename:
+            # Assume that the user uploaded an excel file
+            df = pd.read_excel(io.BytesIO(decoded))
+    except Exception as e:
+        print(e)
+        return html.Div([
+            'There was an error processing this file.'
+        ])
+
+    return html.Div([
+        html.H5(filename),
+        html.H6(datetime.datetime.fromtimestamp(date)),
+
+        dash_table.DataTable(
+            data=df.to_dict('records'),
+            columns=[{'name': i, 'id': i} for i in df.columns]
+        ),
+
+        html.Hr(),  # horizontal line
+
+        # For debugging, display the raw contents provided by the web browser
+        html.Div('Raw Content'),
+        html.Pre(contents[0:200] + '...', style={
+            'whiteSpace': 'pre-wrap',
+            'wordBreak': 'break-all'
+        })
+    ])
+
+
+@app.callback(Output('output-data-upload', 'children'),
+              [Input('upload-data', 'contents')],
+              [State('upload-data', 'filename'),
+               State('upload-data', 'last_modified')])
+def update_output(list_of_contents, list_of_names, list_of_dates):
+    if list_of_contents is not None:
+        children = [
+            parse_contents(c, n, d) for c, n, d in
+            zip(list_of_contents, list_of_names, list_of_dates)]
+        return children
 
 
 signal_catalog_mkd = dcc.Markdown('''
@@ -113,12 +174,39 @@ signal_catalog_mkd = dcc.Markdown('''
 
 ''')
 
+style_center = {
+    'width': '100%',
+    'display': 'flex',
+    'align-items': 'center',
+    'justify-content': 'center',
+}
 
 app.layout = html.Div([
-    html.H2("Signal Dashboard Catalog"),
-    signal_catalog_mkd,
-    signal_data_table()
+    html.Div(html.H2("Signal Dashboard Catalog"), style=style_center),
+    html.Div(signal_catalog_mkd, style=style_center),
+    html.Div(signal_data_table(), style=style_center),
+    dcc.Upload(
+        id='upload-data',
+        children=html.Div([
+            'Drag and Drop or ',
+            html.A('Select Files', style={'color': 'blue', 'fontSize': 16})
+        ]),
+        style={
+            'width': '100%',
+            'height': '60px',
+            'lineHeight': '60px',
+            'borderWidth': '1px',
+            'borderStyle': 'dashed',
+            'borderRadius': '5px',
+            'textAlign': 'center',
+            'margin': '10px'
+        },
+        # Allow multiple files to be uploaded
+        multiple=True
+    ),
+    html.Div(id='output-data-upload'),
 ])
 
+# https://docs.faculty.ai/user-guide/apps/examples/dash_file_upload_download.html
 if __name__ == '__main__':
     app.run_server(debug=True)

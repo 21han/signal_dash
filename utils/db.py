@@ -20,7 +20,7 @@ def get_signals(user_id):
     conn = get_connection()
     df = pd.read_sql(
         f"select * "
-        f"from catalog.signals "
+        f"from signals.signals "
         f"where user_id = {user_id}",
         conn
     )
