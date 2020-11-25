@@ -127,9 +127,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-
-# credentials
 .creds
-
-.idea/aws.xml
 .idea
