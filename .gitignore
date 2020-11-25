@@ -132,3 +132,4 @@ dmypy.json
 .creds
 
 .idea/aws.xml
+.idea
