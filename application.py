@@ -21,7 +21,7 @@ USER_TYPE = "admin"
 df = db.get_signals(0)
 df['signal_name'] = df['signal_name'].apply(lambda s: f"[{s}](https://dash-gallery.plotly.host/dash-time-series/)")
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+application = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 operators = [['ge ', '>='],
              ['le ', '<='],
@@ -57,7 +57,7 @@ def split_filter_part(filter_part):
     return [None] * 3
 
 
-@app.callback(
+@application.callback(
     Output('table-filtering', "data"),
     [Input('table-filtering', "page_current"),
      Input('table-filtering', "page_size"),
@@ -151,9 +151,9 @@ def parse_contents(contents, filename, date):
     ])
 
 
-@app.callback(Output('output-data-upload', 'children'),
-              [Input('upload-data', 'contents')],
-              [State('upload-data', 'filename'),
+@application.callback(Output('output-data-upload', 'children'),
+                      [Input('upload-data', 'contents')],
+                      [State('upload-data', 'filename'),
                State('upload-data', 'last_modified')])
 def update_output(list_of_contents, list_of_names, list_of_dates):
     if list_of_contents is not None:
@@ -181,7 +181,7 @@ style_center = {
     'justify-content': 'center',
 }
 
-app.layout = html.Div([
+application.layout = html.Div([
     html.Div(html.H2("Signal Dashboard Catalog"), style=style_center),
     html.Div(signal_catalog_mkd, style=style_center),
     html.Div(signal_data_table(), style=style_center),
@@ -209,4 +209,4 @@ app.layout = html.Div([
 
 # https://docs.faculty.ai/user-guide/apps/examples/dash_file_upload_download.html
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    application.run_server(debug=True)
