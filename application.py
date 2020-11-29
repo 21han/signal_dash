@@ -18,8 +18,9 @@ logger.setLevel(logging.DEBUG)
 PAGE_SIZE = 5
 USER_TYPE = "admin"
 
-df = db.get_signals(0)
-df['signal_name'] = df['signal_name'].apply(lambda s: f"[{s}](https://dash-gallery.plotly.host/dash-time-series/)")
+# TODO: discuss with Zhicheng how to get USER ID from him
+USER_ID = 0
+
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 application = app.server
@@ -65,29 +66,31 @@ def split_filter_part(filter_part):
      Input('table-filtering', "page_size"),
      Input('table-filtering', "filter_query")])
 def update_table(page_current,page_size, filter):
-    print(filter)
     filtering_expressions = filter.split(' && ')
-    dff = df
+    df = db.get_signals(USER_ID)
+    df['signal_name'] = df['signal_name'].apply(lambda s: f"[{s}](https://dash-gallery.plotly.host/dash-time-series/)")
     for filter_part in filtering_expressions:
         col_name, operator, filter_value = split_filter_part(filter_part)
 
         if operator in ('eq', 'ne', 'lt', 'le', 'gt', 'ge'):
             # these operators match pandas series operator method names
-            dff = dff.loc[getattr(dff[col_name], operator)(filter_value)]
+            df = df.loc[getattr(df[col_name], operator)(filter_value)]
         elif operator == 'contains':
-            dff = dff.loc[dff[col_name].str.contains(filter_value)]
+            df = df.loc[df[col_name].str.contains(filter_value)]
         elif operator == 'datestartswith':
             # this is a simplification of the front-end filtering logic,
             # only works with complete fields in standard format
-            dff = dff.loc[dff[col_name].str.startswith(filter_value)]
+            df = df.loc[df[col_name].str.startswith(filter_value)]
 
-    return dff.iloc[
+    return df.iloc[
         page_current*page_size:(page_current+ 1)*page_size
-    ].to_dict('records')
+           ].to_dict('records')
 
 
 def signal_data_table():
     _columns = []
+    df = db.get_signals(USER_ID)
+    df['signal_name'] = df['signal_name'].apply(lambda s: f"[{s}](https://dash-gallery.plotly.host/dash-time-series/)")
     for i in df.columns:
         if i == 'signal_name':
             _columns.append({"name": i, "id": i, 'presentation': 'markdown'})
@@ -211,4 +214,4 @@ app.layout = html.Div([
 
 # https://docs.faculty.ai/user-guide/apps/examples/dash_file_upload_download.html
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run_server(debug=True)
