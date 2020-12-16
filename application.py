@@ -1,82 +1,78 @@
-from utils import db
-from utils import helper
 import base64
 import datetime
 import io
-import pandas as pd
+import logging
+
 import dash
-from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 import dash_table
-import logging
+import jwt
+import pandas as pd
+from cryptography.fernet import Fernet, InvalidToken
+from dash.dependencies import Input, Output, State
+
+from utils import db
+from utils.security import Security
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
-PAGE_SIZE = 5
-USER_TYPE = "admin"
-
-# TODO: discuss with Zhicheng how to get USER ID from him
-USER_ID = 0
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 application = app.server
 
 
-@app.callback(
-    Output('table-filtering', "data"),
-    [Input('table-filtering', "page_current"),
-     Input('table-filtering', "page_size"),
-     Input('table-filtering', "filter_query")])
-def update_table(page_current, page_size, _filter):
-    filtering_expressions = _filter.split(' && ')
-    df = db.get_signals(USER_ID)
-    df['signal_name'] = df['signal_name'].apply(lambda s: f"[{s}](https://dash-gallery.plotly.host/dash-time-series/)")
-    for filter_part in filtering_expressions:
-        col_name, operator, filter_value = helper.split_filter_part(filter_part)
+@app.callback(Output('error_redirect_page', 'children'),
+              Output('user_id-state', 'children'),
+              [Input('catalog_service_url', 'href')])
+def check_token(pathname):
+    path_info = pathname.split("?token=")
+    logger.info(f"path name: {pathname} | path_info: {path_info}")
+    if len(path_info) != 2:
+        logger.error("** token doesn't exist")
+        return dcc.Location(href=Security.login_page_url, id="any"), None
 
-        if operator in ('eq', 'ne', 'lt', 'le', 'gt', 'ge'):
-            # these operators match pandas series operator method names
-            df = df.loc[getattr(df[col_name], operator)(filter_value)]
-        elif operator == 'contains':
-            df = df.loc[df[col_name].str.contains(filter_value)]
-        elif operator == 'datestartswith':
-            # this is a simplification of the front-end filtering logic,
-            # only works with complete fields in standard format
-            df = df.loc[df[col_name].str.startswith(filter_value)]
+    signed_token = path_info[1]
 
-    return df.iloc[
-           page_current * page_size:(page_current + 1) * page_size
-           ].to_dict('records')
+    try:
+        jwt_token = Fernet(Security.fernet_secret).decrypt(signed_token.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, TypeError):
+        logger.error("Invalid Token Error")
+        return dcc.Location(href=Security.login_page_url, id="any"), None
 
-
-def signal_data_table():
-    _columns = []
-    df = db.get_signals(USER_ID)
-    df['signal_name'] = df['signal_name'].apply(lambda s: f"[{s}](https://dash-gallery.plotly.host/dash-time-series/)")
-    for i in df.columns:
-        if i == 'signal_name':
-            _columns.append({"name": i, "id": i, 'presentation': 'markdown'})
+    post_man_bear_token = "Bearer "
+    if jwt_token.startswith(post_man_bear_token):
+        jwt_token = jwt_token[len(post_man_bear_token):]
+    try:
+        payload = jwt.decode(jwt_token, Security.jwt_secret,
+                             algorithms=[Security.jwt_algo])
+        logger.info(f"** payload\n{payload}")
+        if payload["role"] not in {"support", "ip"}:
+            logger.error("** Role not supported")
+            return dcc.Location(href=Security.login_page_url,
+                                id="any"), None
         else:
-            _columns.append({"name": i, "id": i})
+            logger.info("**success")
+            return "", payload['user_id']
+    except (jwt.DecodeError, jwt.ExpiredSignatureError):
+        logger.error("** Decode/ExpiredSignatrue Errors")
+        return dcc.Location(href=Security.login_page_url, id="any"), None
+    return dcc.Location(href=Security.login_page_url, id="any"), None
+
+
+@app.callback(
+    Output('signal_data_table', 'children'),
+    Input('user_id-state', 'children')
+)
+def signal_data_table(user_id):
+    df = db.get_signals(user_id)
     return dash_table.DataTable(
-        id='table-filtering',
-        columns=_columns,
-        page_current=0,
-        style_cell={
-            'textAlign': 'left',
-        },
-        page_size=PAGE_SIZE,
-        page_action='custom',
-        filter_action='custom',
-        filter_query='',
-        style_header={
-            'backgroundColor': 'rgb(230, 230, 230)',
-            'fontWeight': 'bold'
-        },
+        id='table',
+        columns=[{"name": i, "id": i} for i in df.columns],
+        data=df.to_dict('records'),
     )
 
 
@@ -87,14 +83,11 @@ def parse_contents(contents, filename, date):
     df = None
     try:
         if 'csv' in filename:
-            # Assume that the user uploaded a CSV file
             df = pd.read_csv(
                 io.StringIO(decoded.decode('utf-8')))
             logger.info(f"data shape: {df.shape}\n"
                         f"data columns: {df.columns}")
-            # TODO: send this file to S3
         elif 'xls' in filename:
-            # Assume that the user uploaded an excel file
             df = pd.read_excel(io.BytesIO(decoded))
     except Exception as e:
         print(e)
@@ -110,10 +103,7 @@ def parse_contents(contents, filename, date):
             data=df.to_dict('records'),
             columns=[{'name': i, 'id': i} for i in df.columns]
         ),
-
-        html.Hr(),  # horizontal line
-
-        # For debugging, display the raw contents provided by the web browser
+        html.Hr(),
         html.Div('Raw Content'),
         html.Pre(contents[0:200] + '...', style={
             'whiteSpace': 'pre-wrap',
@@ -152,14 +142,32 @@ style_center = {
     'justify-content': 'center',
 }
 
+
+@app.callback(Output('dash_redirect_page', 'children'),
+              Input('go-to-dash', 'n_clicks'),
+              Input('catalog_service_url', 'href'))
+def go_to_dash(click, pathname):
+    path_info = pathname.split("?token=")
+    if len(path_info) != 2:
+        logger.error("** token doesn't exist")
+        return dcc.Location(href=Security.login_page_url, id="any")
+    signed_token = path_info[1]
+    changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
+    if 'go-to-dash' in changed_id:
+        return dcc.Location(href=f"{Security.dash_page_url}/?token={signed_token}", id="any")
+
+
 app.layout = html.Div([
+    dcc.Location(id='catalog_service_url', refresh=False),
+    html.Div(id='error_redirect_page'),
+    html.Button(id='user_id-state', value='Connection Established'),
     dcc.Tabs([
         dcc.Tab(label='Description', children=[
             html.Div(html.H2("Signal Dashboard Catalog"), style=style_center),
             html.Div(signal_catalog_mkd, style=style_center),
         ]),
         dcc.Tab(label='Signals', children=[
-            html.Div(signal_data_table(), style=style_center)
+            html.Div(id='signal_data_table', style=style_center)
         ]),
         dcc.Tab(label='Upload Data', children=[
             dcc.Upload(
@@ -174,7 +182,9 @@ app.layout = html.Div([
             ),
             html.Div(id='output-data-upload', style=style_center),
         ])
-    ])
+    ]),
+    html.Button('Go to Dash', id='go-to-dash', n_clicks=0),
+    html.Div(id='dash_redirect_page')
 ])
 
 # https://docs.faculty.ai/user-guide/apps/examples/dash_file_upload_download.html
