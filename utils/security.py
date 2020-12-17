@@ -11,3 +11,4 @@ class Security:
     jwt_algo = os.environ['JWT_ALGO']
     jwt_exp_delta_sec = float(os.environ['JWT_EXP'])
     dash_page_url = "http://dashboard-env-1.eba-szsfmavw.us-east-2.elasticbeanstalk.com/"
+    user_page_url = 'http://user-service-dash.eba-y82cxuwr.us-east-2.elasticbeanstalk.com/users/'
