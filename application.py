@@ -160,7 +160,7 @@ def go_to_dash(click, pathname):
 @app.callback(Output('alert_redirect_page', 'children'),
               Input('go-to-alert', 'n_clicks'),
               Input('catalog_service_url', 'href'))
-def go_to_dash(click, pathname):
+def go_to_alert(click, pathname):
     path_info = pathname.split("?token=")
     if len(path_info) != 2:
         logger.error("** token doesn't exist")
@@ -215,7 +215,8 @@ app.layout = html.Div([
     html.Button('Manage User', id='manage-user', n_clicks=0),
     html.Button('Go to Alert', id='go-to-alert', n_clicks=0),
     html.Div(id='dash_redirect_page'),
-    html.Div(id='user_management_redirect_page')
+    html.Div(id='user_management_redirect_page'),
+    html.Div(id='alert_redirect_page')
 ])
 
 # https://docs.faculty.ai/user-guide/apps/examples/dash_file_upload_download.html
