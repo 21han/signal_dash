@@ -154,7 +154,21 @@ def go_to_dash(click, pathname):
     signed_token = path_info[1]
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
     if 'go-to-dash' in changed_id:
-        return dcc.Location(href=f"{Security.dash_page_url}/?token={signed_token}", id="any")
+        return dcc.Location(href=f"{Security.dash_page_url}?token={signed_token}", id="any")
+
+
+@app.callback(Output('dash_redirect_page', 'children'),
+              Input('go-to-alert', 'n_clicks'),
+              Input('catalog_service_url', 'href'))
+def go_to_dash(click, pathname):
+    path_info = pathname.split("?token=")
+    if len(path_info) != 2:
+        logger.error("** token doesn't exist")
+        return dcc.Location(href=Security.login_page_url, id="any")
+    signed_token = path_info[1]
+    changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
+    if 'go-to-alert' in changed_id:
+        return dcc.Location(href=f"{Security.alert_page_url}?token={signed_token}", id="any")
 
 
 @app.callback(Output('user_management_redirect_page', 'children'),
@@ -168,7 +182,7 @@ def manage_user(click, pathname):
     signed_token = path_info[1]
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
     if 'manage-user' in changed_id:
-        return dcc.Location(href=f"{Security.user_page_url}/?token={signed_token}", id="any")
+        return dcc.Location(href=f"{Security.user_page_url}?token={signed_token}", id="any")
 
 
 app.layout = html.Div([
@@ -199,6 +213,7 @@ app.layout = html.Div([
     ]),
     html.Button('Go to Dash', id='go-to-dash', n_clicks=0),
     html.Button('Manage User', id='manage-user', n_clicks=0),
+    html.Button('Go to Alert', id='go-to-alert', n_clicks=0),
     html.Div(id='dash_redirect_page'),
     html.Div(id='user_management_redirect_page')
 ])
