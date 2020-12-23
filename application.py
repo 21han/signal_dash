@@ -157,7 +157,7 @@ def go_to_dash(click, pathname):
         return dcc.Location(href=f"{Security.dash_page_url}?token={signed_token}", id="any")
 
 
-@app.callback(Output('dash_redirect_page', 'children'),
+@app.callback(Output('alert_redirect_page', 'children'),
               Input('go-to-alert', 'n_clicks'),
               Input('catalog_service_url', 'href'))
 def go_to_dash(click, pathname):
